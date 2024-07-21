@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A+ Appliance Recommender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-knob/1.2.13/jquery.knob.min.js"></script>
+    <style>
+        .search-result-item:hover {
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>A+ Appliance Recommender</h1>
+        <nav>
+            <a href="/">Home</a>
+        </nav>
+    </header>
+    <main class="container">
+        <h2>Search for an Appliance</h2>
+        <form method="post" id="appliance-form">
+            {{ form.hidden_tag() }}
+            <div class="form-group">
+                {{ form.energy_provider(class="form-control") }}
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        const energyProviderInput = document.querySelector("select[name='energy_provider']");
+                        energyProviderInput.insertAdjacentHTML('afterbegin', '<option disabled selected>Select your energy provider</option>');
+                    });
+                </script>
+            </div>
+            <div class="form-group">
+                {{ form.usage_frequency(class="form-control") }}
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {
+                        const usageFrequencyInput = document.querySelector("select[name='usage_frequency']");
+                        usageFrequencyInput.insertAdjacentHTML('afterbegin', '<option disabled selected>How much do you use your airfryer?</option>');
+                    });
+                </script>
+            </div>
+            <div class="form-group" id="usage_per_week_container" style="display: none;">
+                {{ form.usage_per_week(class="form-control", placeholder="Select usage per week") }}
+            </div>
+            <div class="form-group">
+                {{ form.search_model(class="form-control", placeholder="Search for a model") }}
+                <div id="matching-models"></div>
+            </div>
+            <input type="hidden" id="selected_model" name="selected_model" value="">
+        </form>
+
+        {% if matched_airfryer_data %}
+            <h2>Search Result</h2>
+            <div class="search-result">
+                <img src="{{ matched_airfryer_data['image'] }}" width="150">
+                <div>
+                    <p>Model: {{ matched_airfryer_data['model'] }}</p>
+                    <p>Price: ${{ matched_airfryer_data['price'] }}</p>
+                    <p>Total Score: {{ matched_airfryer_data['total_score'] }}</p>
+                    <p>Power: {{ matched_airfryer_data['power'] }} kWh</p>
+                    <p>Energy Label: {{ matched_airfryer_data['energy_label'] }}</p>
+                    <p>Yearly Cost: ${{ matched_airfryer_data['yearly_cost'] }}</p>
+                    <a href="{{ matched_airfryer_data['link'] }}" target="_blank">Link to product</a>
+                </div>
+            </div>
+            <hr>
+            {% if suitable_for %}
+                <h3>Recommendations for airfryers suitable for {{ suitable_for }}:</h3>
+                <div class="recommendations-container">
+                    {% for rec in recommendations_data %}
+                        <div class="recommendation-item">
+                            <img src="{{ rec['image'] }}" width="150">
+                            <h4>Model: {{ rec['model'] }}</h4>
+                            <p>Price: ${{ rec['price'] }}</p>
+                            <p>Total Score: {{ rec['total_score'] }}</p>
+                            <p>Power: {{ rec['power'] }} kWh</p>
+                            <p>Energy Label: {{ rec['energy_label'] }}</p>
+                            <p>Yearly Cost: ${{ rec['yearly_cost'] }}</p>
+                            <p>Payback Period: {{ rec['payback_period'] }}</p>
+                            <p>After this payback period, you save ${{ rec['monthly_savings'] }} per month.</p>
+                            <a href="{{ rec['link'] }}" class="btn btn-secondary" target="_blank">Link to product</a>
+                            <div class="tags">
+                                {% for tag in rec['tags'] %}
+                                    <span class="tag">{{ tag }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endif %}
+    </main>
+    <footer>
+        <p>&copy; 2024 A+ Appliance Recommender</p>
+    </footer>
+
+    <script>
+        document.getElementById('usage_frequency').addEventListener('change', function() {
+            if (this.value === '1-7 times a week') {
+                document.getElementById('usage_per_week_container').style.display = 'block';
+            } else {
+                document.getElementById('usage_per_week_container').style.display = 'none';
+            }
+        });
+
+        $(document).ready(function() {
+            $('#search_model').on('input', function() {
+                const searchModel = $(this).val();
+                if (searchModel.length > 0) {
+                    $.ajax({
+                        url: '/search_model',
+                        method: 'POST',
+                        data: { search_model: searchModel },
+                        success: function(response) {
+                            let options = '';
+                            response.forEach(model => {
+                                options += `<div class="search-result-item" data-model="${model.Model}">
+                                                <img src="${model.Image}" width="50">
+                                                ${model.Model.split().slice(0, 3).join(' ')}
+                                            </div>`;
+                            });
+                            $('#matching-models').html(options);
+                            
+                            // Add hover and click events to select a model and show recommendations
+                            $('.search-result-item').hover(
+                                function() { $(this).css('background-color', '#f0f0f0'); },
+                                function() { $(this).css('background-color', ''); }
+                            ).click(function() {
+                                $('#selected_model').val($(this).data('model'));
+                                $('#appliance-form').submit();
+                            });
+                        }
+                    });
+                } else {
+                    $('#matching-models').html('');
+                }
+            });
+
+            // Knob implementation for usage_per_week
+            $('#usage_per_week').knob({
+                'min': 1,
+                'max': 7,
+                'step': 1,
+                'width': 100,
+                'height': 100,
+                'displayInput': true,
+                'fgColor': '#3498db'
+            });
+        });
+    </script>
+</body>
+</html>
